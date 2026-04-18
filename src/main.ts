@@ -5,7 +5,6 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import * as dotenv from 'dotenv';
-import swaggerUi from 'swagger-ui-express';
 import fs from 'fs';
 import path from 'path';
 
@@ -56,38 +55,6 @@ app.use('/api/v1/secrets', secretRoutes);
 app.use('/api/v1/feature-flags', featureFlagRoutes);
 app.use('/api/v1/public', publicRoutes);
 app.use('/api/v1/health', healthRoutes);
-
-// Swagger documentation (if swagger.yaml exists)
-try {
-  const swaggerPath = path.join(__dirname, '../swagger.yaml');
-  if (fs.existsSync(swaggerPath)) {
-    // Try to use yamljs if available
-    let swaggerDocument;
-    try {
-      const YAML = require('yamljs');
-      swaggerDocument = YAML.load(swaggerPath);
-    } catch (yamlError) {
-      // Fallback: serve swagger.yaml as raw file
-      app.use('/api-docs/swagger.yaml', express.static(swaggerPath));
-      logger.info('Serving swagger.yaml as static file (yamljs not installed)');
-    }
-    
-    if (swaggerDocument) {
-      app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-    } else {
-      app.use('/api-docs', (req, res) => {
-        res.json({ 
-          message: 'Swagger UI not available',
-          swaggerYaml: '/api-docs/swagger.yaml'
-        });
-      });
-    }
-  } else {
-    logger.warn('swagger.yaml not found');
-  }
-} catch (error) {
-  logger.warn('Swagger documentation not available:', error);
-}
 
 // Root endpoint
 app.get('/', (req, res) => {

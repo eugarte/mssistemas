@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { ConfigurationEntity } from '../entities/ConfigurationEntity';
 import { Configuration, ConfigurationType } from '@domain/entities/Configuration';
@@ -12,8 +12,8 @@ export class ConfigurationRepository implements IConfigurationRepository {
   }
 
   async findAll(filters?: { serviceId?: string | null; environment?: string | null; key?: string }): Promise<Configuration[]> {
-    const query: any = { deleted_at: null };
-    
+    const query: any = {};
+
     if (filters?.serviceId !== undefined) {
       query.service_id = filters.serviceId;
     }
@@ -32,12 +32,16 @@ export class ConfigurationRepository implements IConfigurationRepository {
   }
 
   async findById(id: string): Promise<Configuration | null> {
-    const entity = await this.repository.findOne({ where: { id, deleted_at: null } });
+    const entity = await this.repository.findOne({ where: { id } });
     return entity ? this.toDomain(entity) : null;
   }
 
   async findByKey(key: string, serviceId?: string | null, environment?: string | null): Promise<Configuration | null> {
-    const where: any = { key, service_id: serviceId ?? null, environment: environment ?? null, deleted_at: null };
+    const where: any = { 
+      key, 
+      service_id: serviceId ?? null, 
+      environment: environment ?? null
+    };
     const entity = await this.repository.findOne({ where });
     return entity ? this.toDomain(entity) : null;
   }
@@ -45,7 +49,7 @@ export class ConfigurationRepository implements IConfigurationRepository {
   async findByHierarchy(key: string, serviceId?: string, environment?: string): Promise<Configuration | null> {
     // Priority: service+environment > service > environment > default
     const configs = await this.repository.find({
-      where: { key, deleted_at: null }
+      where: { key }
     });
 
     // service + environment

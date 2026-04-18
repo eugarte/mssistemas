@@ -1,13 +1,16 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
-import { IEncryptionService } from './IEncryptionService';
 
-export class AesEncryptionService implements IEncryptionService {
+export class AesEncryptionService {
   private readonly algorithm = 'aes-256-gcm';
   private readonly key: Buffer;
 
-  constructor(masterKey: string) {
+  constructor(masterKey?: string) {
+    const key = masterKey || process.env.MASTER_KEY;
+    if (!key) {
+      throw new Error('Master key is required for encryption');
+    }
     // Derive a 32-byte key from the master key using scrypt
-    this.key = scryptSync(masterKey, 'salt', 32);
+    this.key = scryptSync(key, 'salt', 32);
   }
 
   encrypt(value: string): string {

@@ -5,9 +5,6 @@ import { authMiddleware, requireRoles, optionalAuthMiddleware } from '../middlew
 const router = Router();
 const controller = new ServiceController();
 
-// Health check - public
-router.get('/health', controller.health);
-
 // Protected routes
 router.post('/', authMiddleware, requireRoles('admin', 'developer'), controller.create);
 router.get('/', authMiddleware, controller.findAll);

@@ -91,23 +91,12 @@ Sistema de banderas de características para despliegues controlados.
 - Programación temporal (activar el lunes 9 AM)
 - A/B testing support
 
-**Estructura de flag:**
-```json
-{
-  "key": "new-payment-gateway",
-  "name": "Nueva Pasarela de Pagos",
-  "description": "Integración con Stripe v2",
-  "enabled": true,
-  "strategy": "percentage",
-  "percentage": 10,
-  "targetUsers": ["user123"],
-  "targetGroups": ["beta-testers"],
-  "schedule": {
-    "startDate": "2026-05-01T00:00:00Z",
-    "endDate": null
-  }
-}
-```
+**Estrategias de evaluación:**
+- **simple:** ON/OFF global
+- **percentage:** Porcentaje de usuarios (consistent hashing)
+- **user_target:** Lista específica de usuarios
+- **group_target:** Lista específica de grupos
+- **schedule:** Programación temporal
 
 ### 5. System Catalogs (Catálogos Configurables)
 
@@ -129,8 +118,7 @@ Sistema de banderas de características para despliegues controlados.
     { "code": "active", "label": "Activo", "color": "#28a745", "sort_order": 1 },
     { "code": "inactive", "label": "Inactivo", "color": "#6c757d", "sort_order": 2 },
     { "code": "suspended", "label": "Suspendido", "color": "#ffc107", "sort_order": 3 },
-    { "code": "maintenance", "label": "En Mantenimiento", "color": "#17a2b8", "sort_order": 4 },
-    { "code": "deprecated", "label": "Deprecado", "color": "#dc3545", "sort_order": 5 }
+    { "code": "maintenance", "label": "En Mantenimiento", "color": "#17a2b8", "sort_order": 4 }
   ],
   "is_active": true,
   "allow_multiple": false
@@ -172,7 +160,7 @@ Variables de entorno gestionadas desde un solo lugar.
 - Validación de formato (URL, email, regex)
 - Referencias entre variables (`${db_host}:${db_port}`)
 
-### 6. Health & Status Dashboard
+### 7. Health & Status Dashboard
 
 Monitoreo centralizado del estado de todos los servicios.
 
@@ -191,16 +179,6 @@ Monitoreo centralizado del estado de todos los servicios.
 - Histórico de uptime
 - Alertas configurables
 
-### 7. API Gateway & Routing (Opcional)
-
-Puede incluir funcionalidad de gateway para enrutamiento dinámico.
-
-**Features:**
-- Dynamic routing basado en el registry
-- Load balancing simple (round-robin)
-- Rate limiting global
-- Request logging centralizado
-
 ---
 
 ## Modelo de Datos
@@ -209,165 +187,198 @@ Puede incluir funcionalidad de gateway para enrutamiento dinámico.
 
 ```sql
 -- Microservicios registrados
-services
-- id (UUID PK)
-- name (varchar, unique) -- ej: "msseguridad"
-- display_name (varchar) -- ej: "Microservicio de Seguridad"
-- description (text)
-- version (varchar) -- semver ej: "1.2.3"
-- status_catalog_id (UUID FK) -- Referencia a catalogs (ej: catálogo "service_status")
-- status_value (varchar) -- Código del valor del catálogo (ej: "active", "suspended")
-- team_owner (varchar)
-- repository_url (varchar)
-- documentation_url (varchar)
-- technology_stack (json) -- ["nodejs", "typescript", "express"]
-- health_check_url (varchar)
-- created_at, updated_at
+CREATE TABLE services (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100) UNIQUE NOT NULL,
+  display_name VARCHAR(200) NOT NULL,
+  description TEXT,
+  version VARCHAR(50) NOT NULL,
+  status_catalog_id UUID REFERENCES catalogs(id),
+  status_value VARCHAR(100),
+  team_owner VARCHAR(100),
+  repository_url VARCHAR(500),
+  documentation_url VARCHAR(500),
+  technology_stack JSONB DEFAULT '[]',
+  health_check_url VARCHAR(500),
+  health_check_path VARCHAR(200),
+  endpoints JSONB DEFAULT '{}',
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
 -- Catálogos del sistema (valores configurables)
-catalogs
-- id (UUID PK)
-- key (varchar, unique) -- ej: "service_status", "customer_type", "notification_priority"
-- name (varchar) -- ej: "Estado de Servicio"
-- description (text)
-- allow_multiple (boolean) -- si true, permite seleccionar múltiples valores
-- is_active (boolean)
-- created_by (varchar)
-- created_at, updated_at
+CREATE TABLE catalogs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key VARCHAR(100) UNIQUE NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  description TEXT,
+  allow_multiple BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
 -- Valores de catálogos
-catalog_values
-- id (UUID PK)
-- catalog_id (UUID FK)
-- code (varchar) -- ej: "active", "inactive", "suspended"
-- label (varchar) -- ej: "Activo", "Inactivo", "Suspendido"
-- description (text)
-- color (varchar) -- hex color para UI, ej: "#28a745"
-- sort_order (int) -- orden de visualización
-- is_default (boolean) -- valor por defecto
-- is_active (boolean)
-- created_at, updated_at, deleted_at (soft delete)
-
--- URLs por entorno
-service_endpoints
-- id (UUID PK)
-- service_id (UUID FK)
-- environment (enum: dev, test, staging, prod)
-- base_url (varchar) -- ej: "https://api-dev.ejemplo.com"
-- health_check_path (varchar) -- ej: "/health"
-- is_active (boolean)
-- created_at, updated_at
+CREATE TABLE catalog_values (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  catalog_id UUID NOT NULL REFERENCES catalogs(id),
+  code VARCHAR(100) NOT NULL,
+  label VARCHAR(200) NOT NULL,
+  description TEXT,
+  color VARCHAR(7),
+  sort_order INT DEFAULT 0,
+  is_default BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  deleted_at TIMESTAMP,
+  UNIQUE(catalog_id, code)
+);
 
 -- Configuraciones
-configurations
-- id (UUID PK)
-- service_id (UUID FK, nullable - si null aplica a todos)
-- environment (varchar, nullable - si null aplica a todos)
-- key (varchar)
-- value (text) -- puede ser string, number, boolean, JSON
-- type (enum: string, number, boolean, json, yaml)
-- is_secret (boolean) -- si true, requiere permisos especiales
-- is_encrypted (boolean)
-- version (int) -- para versionado
-- description (text)
-- tags (json)
-- created_by (varchar)
-- created_at, updated_at, deleted_at (soft delete)
+CREATE TABLE configurations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  service_id UUID REFERENCES services(id),
+  environment VARCHAR(50),
+  key VARCHAR(200) NOT NULL,
+  value TEXT NOT NULL,
+  type VARCHAR(20) DEFAULT 'string' CHECK (type IN ('string', 'number', 'boolean', 'json', 'yaml')),
+  is_secret BOOLEAN DEFAULT false,
+  is_encrypted BOOLEAN DEFAULT false,
+  version INT DEFAULT 1,
+  description TEXT,
+  tags JSONB DEFAULT '[]',
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  deleted_at TIMESTAMP
+);
 
 -- Historial de cambios de configuración
-configuration_history
-- id (UUID PK)
-- configuration_id (UUID FK)
-- action (enum: created, updated, deleted)
-- old_value (text, encrypted)
-- new_value (text, encrypted)
-- changed_by (varchar)
-- change_reason (text)
-- created_at
+CREATE TABLE configuration_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  configuration_id UUID NOT NULL REFERENCES configurations(id),
+  action VARCHAR(20) NOT NULL CHECK (action IN ('created', 'updated', 'deleted')),
+  old_value TEXT,
+  new_value TEXT,
+  changed_by VARCHAR(100),
+  change_reason TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
 -- Secrets (encriptados)
-secrets
-- id (UUID PK)
-- service_id (UUID FK, nullable)
-- environment (varchar, nullable)
-- key (varchar)
-- encrypted_value (text) -- AES-256
-- encryption_version (varchar)
-- is_rotating (boolean) -- en proceso de rotación
-- last_rotated_at (timestamp)
-- expires_at (timestamp, nullable)
-- created_by (varchar)
-- created_at, updated_at
+CREATE TABLE secrets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  service_id UUID REFERENCES services(id),
+  environment VARCHAR(50),
+  key VARCHAR(200) NOT NULL,
+  encrypted_value TEXT NOT NULL,
+  encryption_version VARCHAR(20) DEFAULT 'v1',
+  is_rotating BOOLEAN DEFAULT false,
+  last_rotated_at TIMESTAMP,
+  expires_at TIMESTAMP,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
 -- Access logs de secrets (quién leyó qué)
-secret_access_logs
-- id (UUID PK)
-- secret_id (UUID FK)
-- service_id (UUID FK) -- servicio que accedió
-- action (enum: read, write, rotate)
-- accessed_by (varchar) -- user o service account
-- ip_address (varchar)
-- user_agent (text)
-- created_at
+CREATE TABLE secret_access_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  secret_id UUID NOT NULL REFERENCES secrets(id),
+  service_id UUID REFERENCES services(id),
+  action VARCHAR(20) NOT NULL CHECK (action IN ('read', 'write', 'rotate')),
+  accessed_by VARCHAR(100),
+  ip_address VARCHAR(50),
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
 -- Feature Flags
-feature_flags
-- id (UUID PK)
-- key (varchar, unique) -- ej: "nuevo-checkout"
-- name (varchar)
-- description (text)
-- enabled (boolean)
-- strategy (enum: simple, percentage, user_target, group_target, schedule)
-- percentage (int, 0-100) -- para strategy=percentage
-- target_users (json) -- array de user IDs
-- target_groups (json) -- array de group names
-- schedule_start (timestamp, nullable)
-- schedule_end (timestamp, nullable)
-- created_by (varchar)
-- created_at, updated_at
+CREATE TABLE feature_flags (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key VARCHAR(100) UNIQUE NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  description TEXT,
+  enabled BOOLEAN DEFAULT false,
+  strategy VARCHAR(20) DEFAULT 'simple' CHECK (strategy IN ('simple', 'percentage', 'user_target', 'group_target', 'schedule')),
+  percentage INT DEFAULT 0,
+  target_users JSONB DEFAULT '[]',
+  target_groups JSONB DEFAULT '[]',
+  schedule_start TIMESTAMP,
+  schedule_end TIMESTAMP,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
 -- Feature Flag aplicaciones por servicio
-feature_flag_services
-- id (UUID PK)
-- feature_flag_id (UUID FK)
-- service_id (UUID FK)
-- is_enabled (boolean) -- puede sobrescribir el global
-- override_strategy (json, nullable)
-- created_at, updated_at
+CREATE TABLE feature_flag_services (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  feature_flag_id UUID NOT NULL REFERENCES feature_flags(id),
+  service_id UUID NOT NULL REFERENCES services(id),
+  is_enabled BOOLEAN DEFAULT true,
+  override_strategy JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(feature_flag_id, service_id)
+);
 
 -- Heartbeats de servicios
-service_heartbeats
-- id (UUID PK)
-- service_id (UUID FK)
-- environment (varchar)
-- instance_id (varchar) -- identificador único de instancia
-- status (enum: up, down, degraded)
-- response_time_ms (int)
-- version (varchar)
-- metadata (json) -- CPU, memory, custom data
-- reported_at (timestamp)
+CREATE TABLE service_heartbeats (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  service_id UUID NOT NULL REFERENCES services(id),
+  environment VARCHAR(50) NOT NULL,
+  instance_id VARCHAR(100) NOT NULL,
+  status VARCHAR(20) NOT NULL CHECK (status IN ('up', 'down', 'degraded')),
+  response_time_ms INT,
+  version VARCHAR(50),
+  metadata JSONB,
+  reported_at TIMESTAMP DEFAULT NOW()
+);
 
 -- Dependencias entre servicios
-service_dependencies
-- id (UUID PK)
-- service_id (UUID FK) -- servicio que depende
-- depends_on_service_id (UUID FK) -- servicio del que depende
-- dependency_type (enum: required, optional)
-- is_healthy (boolean) -- último estado conocido
-- checked_at (timestamp)
-- created_at
+CREATE TABLE service_dependencies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  service_id UUID NOT NULL REFERENCES services(id),
+  depends_on_service_id UUID NOT NULL REFERENCES services(id),
+  dependency_type VARCHAR(20) DEFAULT 'required' CHECK (dependency_type IN ('required', 'optional')),
+  is_healthy BOOLEAN,
+  checked_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
 -- Audit logs general
-audit_logs
-- id (UUID PK)
-- entity_type (enum: service, configuration, secret, feature_flag)
-- entity_id (UUID)
-- action (varchar)
-- actor (varchar) -- user o service
-- actor_type (enum: user, service)
-- ip_address (varchar)
-- details (json)
-- created_at
+CREATE TABLE audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type VARCHAR(20) NOT NULL CHECK (entity_type IN ('service', 'configuration', 'secret', 'feature_flag', 'catalog')),
+  entity_id UUID NOT NULL,
+  action VARCHAR(100) NOT NULL,
+  actor VARCHAR(100),
+  actor_type VARCHAR(20) DEFAULT 'user' CHECK (actor_type IN ('user', 'service')),
+  ip_address VARCHAR(50),
+  details JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Índices para performance
+CREATE INDEX idx_services_name ON services(name);
+CREATE INDEX idx_services_status ON services(status_value);
+CREATE INDEX idx_catalogs_key ON catalogs(key);
+CREATE INDEX idx_catalog_values_catalog_id ON catalog_values(catalog_id);
+CREATE INDEX idx_catalog_values_code ON catalog_values(code);
+CREATE INDEX idx_configurations_key ON configurations(key);
+CREATE INDEX idx_configurations_service ON configurations(service_id);
+CREATE INDEX idx_configurations_environment ON configurations(environment);
+CREATE INDEX idx_secrets_key ON secrets(key);
+CREATE INDEX idx_secrets_service ON secrets(service_id);
+CREATE INDEX idx_feature_flags_key ON feature_flags(key);
+CREATE INDEX idx_heartbeats_service ON service_heartbeats(service_id);
+CREATE INDEX idx_heartbeats_reported ON service_heartbeats(reported_at);
+CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
 ```
 
 ---
@@ -379,25 +390,25 @@ audit_logs
 ```
 POST   /api/v1/services                    # Registrar nuevo servicio
 GET    /api/v1/services                    # Listar todos los servicios
-GET    /api/v1/services/:id                 # Obtener servicio específico
-PUT    /api/v1/services/:id                 # Actualizar servicio
-DELETE /api/v1/services/:id                 # Eliminar servicio (soft)
-POST   /api/v1/services/:id/heartbeat       # Enviar heartbeat
-GET    /api/v1/services/:id/health         # Obtener health status
-GET    /api/v1/services/:id/dependencies    # Obtener dependencias
-POST   /api/v1/services/:id/dependencies    # Registrar dependencia
+GET    /api/v1/services/:id                  # Obtener servicio específico
+PUT    /api/v1/services/:id                  # Actualizar servicio
+DELETE /api/v1/services/:id                  # Eliminar servicio (soft)
+POST   /api/v1/services/:id/heartbeat        # Enviar heartbeat
+GET    /api/v1/services/:id/health           # Obtener health status
+GET    /api/v1/services/:id/dependencies     # Obtener dependencias
+POST   /api/v1/services/:id/dependencies     # Registrar dependencia
 ```
 
 ### Configuration
 
 ```
-GET    /api/v1/configurations               # Listar configuraciones (con filtros)
-GET    /api/v1/configurations/:id          # Obtener configuración
-POST   /api/v1/configurations               # Crear configuración
-PUT    /api/v1/configurations/:id           # Actualizar configuración
-DELETE /api/v1/configurations/:id           # Eliminar configuración
+GET    /api/v1/configurations                # Listar configuraciones (con filtros)
+GET    /api/v1/configurations/:id           # Obtener configuración
+POST   /api/v1/configurations                # Crear configuración
+PUT    /api/v1/configurations/:id            # Actualizar configuración
+DELETE /api/v1/configurations/:id            # Eliminar configuración
 POST   /api/v1/configurations/:id/rollback   # Rollback a versión anterior
-GET    /api/v1/configurations/history        # Ver historial de cambios
+GET    /api/v1/configurations/history         # Ver historial de cambios
 POST   /api/v1/configurations/bulk-update    # Actualización masiva
 POST   /api/v1/configurations/export         # Exportar a JSON/YAML
 POST   /api/v1/configurations/import         # Importar desde JSON/YAML
@@ -406,67 +417,68 @@ POST   /api/v1/configurations/import         # Importar desde JSON/YAML
 ### Secrets
 
 ```
-GET    /api/v1/secrets                      # Listar secrets (solo metadata, no valores)
-GET    /api/v1/secrets/:id                 # Obtener valor desencriptado (requiere permisos)
-POST   /api/v1/secrets                     # Crear secret
-PUT    /api/v1/secrets/:id                 # Actualizar secret
-DELETE /api/v1/secrets/:id                 # Eliminar secret
-POST   /api/v1/secrets/:id/rotate          # Rotar secret
-GET    /api/v1/secrets/:id/access-logs     # Ver quién accedió al secret
+GET    /api/v1/secrets                       # Listar secrets (solo metadata, no valores)
+GET    /api/v1/secrets/:id                  # Obtener metadata
+GET    /api/v1/secrets/:id/value            # Obtener valor desencriptado (requiere permisos)
+POST   /api/v1/secrets                       # Crear secret
+PUT    /api/v1/secrets/:id                   # Actualizar secret
+DELETE /api/v1/secrets/:id                   # Eliminar secret
+POST   /api/v1/secrets/:id/rotate            # Rotar secret
+GET    /api/v1/secrets/:id/access-logs       # Ver quién accedió al secret
 ```
 
 ### Feature Flags
 
 ```
-GET    /api/v1/feature-flags                # Listar feature flags
-GET    /api/v1/feature-flags/:id           # Obtener flag
-POST   /api/v1/feature-flags               # Crear flag
-PUT    /api/v1/feature-flags/:id          # Actualizar flag
-DELETE /api/v1/feature-flags/:id          # Eliminar flag
-POST   /api/v1/feature-flags/:id/toggle    # Toggle ON/OFF
-POST   /api/v1/feature-flags/:id/services  # Asociar a servicios
-POST   /api/v1/feature-flags/evaluate       # Evaluar si flag está activo para usuario
+GET    /api/v1/feature-flags                 # Listar feature flags
+GET    /api/v1/feature-flags/:id             # Obtener flag
+POST   /api/v1/feature-flags                 # Crear flag
+PUT    /api/v1/feature-flags/:id             # Actualizar flag
+DELETE /api/v1/feature-flags/:id             # Eliminar flag
+POST   /api/v1/feature-flags/:id/toggle      # Toggle ON/OFF
+POST   /api/v1/feature-flags/:id/services    # Asociar a servicios
+POST   /api/v1/feature-flags/evaluate        # Evaluar si flag está activo para usuario
 ```
 
 ### System Catalogs (Catálogos Configurables)
 
 ```
 # Catálogos
-GET    /api/v1/catalogs                     # Listar todos los catálogos
-GET    /api/v1/catalogs/:key               # Obtener catálogo por key
-POST   /api/v1/catalogs                    # Crear nuevo catálogo
-PUT    /api/v1/catalogs/:id                # Actualizar catálogo
-DELETE /api/v1/catalogs/:id                # Eliminar catálogo
+GET    /api/v1/catalogs                      # Listar todos los catálogos
+GET    /api/v1/catalogs/:key                 # Obtener catálogo por key
+POST   /api/v1/catalogs                       # Crear nuevo catálogo
+PUT    /api/v1/catalogs/:id                   # Actualizar catálogo
+DELETE /api/v1/catalogs/:id                   # Eliminar catálogo
 
 # Valores de catálogo
-GET    /api/v1/catalogs/:id/values          # Listar valores del catálogo
-GET    /api/v1/catalogs/:key/values        # Listar valores por key del catálogo
-POST   /api/v1/catalogs/:id/values         # Agregar valor al catálogo
-PUT    /api/v1/catalogs/values/:valueId    # Actualizar valor
-DELETE /api/v1/catalogs/values/:valueId    # Eliminar valor (soft delete)
+GET    /api/v1/catalogs/:id/values           # Listar valores del catálogo
+GET    /api/v1/catalogs/:key/values            # Listar valores por key del catálogo
+POST   /api/v1/catalogs/:id/values           # Agregar valor al catálogo
+PUT    /api/v1/catalogs/values/:valueId       # Actualizar valor
+DELETE /api/v1/catalogs/values/:valueId       # Eliminar valor (soft delete)
 
 # API pública para otros microservicios
 GET    /api/v1/public/catalogs/:key/values          # Obtener valores (sin auth)
 POST   /api/v1/public/catalogs/:key/validate         # Validar si código existe
-GET    /api/v1/public/catalogs/:key/default         # Obtener valor por defecto
+GET    /api/v1/public/catalogs/:key/default            # Obtener valor por defecto
 ```
 
 ### Service Discovery (para otros microservicios)
 
 ```
-GET    /api/v1/discovery/services           # Descubrir todos los servicios activos
-GET    /api/v1/discovery/services/:name      # Obtener URL de servicio específico
+GET    /api/v1/discovery/services              # Descubrir todos los servicios activos
+GET    /api/v1/discovery/services/:name       # Obtener URL de servicio específico
 GET    /api/v1/discovery/services/:name/config # Obtener configuración de servicio
-GET    /api/v1/discovery/health             # Health de todo el ecosistema
+GET    /api/v1/discovery/health               # Health de todo el ecosistema
 ```
 
 ### Dashboard & Monitoring
 
 ```
-GET    /api/v1/dashboard/status            # Status global de servicios
-GET    /api/v1/dashboard/metrics            # Métricas agregadas
-GET    /api/v1/dashboard/activity           # Actividad reciente
-GET    /api/v1/audit-logs                  # Logs de auditoría
+GET    /api/v1/dashboard/status                # Status global de servicios
+GET    /api/v1/dashboard/metrics               # Métricas agregadas
+GET    /api/v1/dashboard/activity              # Actividad reciente
+GET    /api/v1/audit-logs                      # Logs de auditoría
 ```
 
 ---
@@ -520,28 +532,31 @@ src/
 ├── domain/
 │   ├── entities/
 │   │   ├── Service.ts
+│   │   ├── Catalog.ts
 │   │   ├── Configuration.ts
 │   │   ├── Secret.ts
 │   │   ├── FeatureFlag.ts
 │   │   └── ServiceHeartbeat.ts
 │   ├── repositories/
 │   │   ├── IServiceRepository.ts
+│   │   ├── ICatalogRepository.ts
 │   │   ├── IConfigurationRepository.ts
 │   │   └── ISecretRepository.ts
 │   └── services/
-│       ├── ServiceRegistryService.ts
-│       ├── ConfigurationService.ts
-│       └── EncryptionService.ts
+│       ├── EncryptionService.ts
+│       └── AuditService.ts
 │
 ├── application/
 │   ├── use-cases/
 │   │   ├── RegisterServiceUseCase.ts
+│   │   ├── CreateCatalogUseCase.ts
 │   │   ├── GetConfigurationUseCase.ts
 │   │   ├── UpdateSecretUseCase.ts
 │   │   ├── EvaluateFeatureFlagUseCase.ts
 │   │   └── HealthCheckUseCase.ts
 │   ├── dtos/
 │   │   ├── ServiceDto.ts
+│   │   ├── CatalogDto.ts
 │   │   ├── ConfigurationDto.ts
 │   │   └── SecretDto.ts
 │   └── mappers/
@@ -562,6 +577,7 @@ src/
     ├── http/
     │   ├── controllers/
     │   │   ├── ServiceController.ts
+    │   │   ├── CatalogController.ts
     │   │   ├── ConfigurationController.ts
     │   │   ├── SecretController.ts
     │   │   └── FeatureFlagController.ts
@@ -603,7 +619,6 @@ src/
 | **Developer** | Ver configs, crear configs propios, NO ver secrets |
 | **Service Account** | Leer configs/secrets asignados, enviar heartbeats |
 | **Auditor** | Solo lectura de todo, ver logs |
-| **DevOps** | Gestionar feature flags, ver health dashboards |
 
 ### Medidas de Seguridad
 
@@ -768,10 +783,10 @@ await client.register({
 });
 
 // Obtener configuración
-const dbConfig = await client.getConfiguration('database.poolSize', 'prod');
+const config = await client.getConfiguration('database.poolSize', 'prod');
 
 // Evaluar feature flag
-const isEnabled = await client.evaluateFlag('new-sms-provider', userId);
+const isEnabled = await client.evaluateFlag('new-feature', userId);
 
 // Heartbeat automático cada 30s
 client.startHeartbeat();

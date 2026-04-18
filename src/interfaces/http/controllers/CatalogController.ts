@@ -1,57 +1,40 @@
 import { Request, Response } from 'express';
-import { 
-  CreateCatalogUseCase, 
-  GetCatalogsUseCase, 
-  UpdateCatalogUseCase,
-  DeleteCatalogUseCase,
-  CreateCatalogValueUseCase,
-  GetCatalogValuesUseCase,
-  UpdateCatalogValueUseCase,
-  DeleteCatalogValueUseCase,
-  ValidateCatalogValueUseCase 
-} from '@application/use-cases/catalogs/CatalogUseCases';
+import { GetCatalogsUseCase, GetCatalogByIdUseCase, CreateCatalogUseCase, UpdateCatalogUseCase, DeleteCatalogUseCase, GetCatalogValuesUseCase, AddCatalogValueUseCase, UpdateCatalogValueUseCase, RemoveCatalogValueUseCase } from '@application/use-cases/catalogs';
 import { CatalogRepository } from '@infrastructure/persistence/repositories/CatalogRepository';
-import { CreateCatalogDto, UpdateCatalogDto, CreateCatalogValueDto, UpdateCatalogValueDto } from '@application/dtos/CatalogDto';
+import { CreateCatalogDto, UpdateCatalogDto, CreateCatalogValueDto, UpdateCatalogValueDto } from '@application/dtos';
 
 export class CatalogController {
-  private createUseCase: CreateCatalogUseCase;
-  private getUseCase: GetCatalogsUseCase;
-  private updateUseCase: UpdateCatalogUseCase;
-  private deleteUseCase: DeleteCatalogUseCase;
-  private createValueUseCase: CreateCatalogValueUseCase;
-  private getValuesUseCase: GetCatalogValuesUseCase;
-  private updateValueUseCase: UpdateCatalogValueUseCase;
-  private deleteValueUseCase: DeleteCatalogValueUseCase;
-  private validateValueUseCase: ValidateCatalogValueUseCase;
+  private getCatalogsUseCase: GetCatalogsUseCase;
+  private getCatalogByIdUseCase: GetCatalogByIdUseCase;
+  private createCatalogUseCase: CreateCatalogUseCase;
+  private updateCatalogUseCase: UpdateCatalogUseCase;
+  private deleteCatalogUseCase: DeleteCatalogUseCase;
+  private getCatalogValuesUseCase: GetCatalogValuesUseCase;
+  private addCatalogValueUseCase: AddCatalogValueUseCase;
+  private updateCatalogValueUseCase: UpdateCatalogValueUseCase;
+  private removeCatalogValueUseCase: RemoveCatalogValueUseCase;
 
   constructor() {
     const repository = new CatalogRepository();
-    this.createUseCase = new CreateCatalogUseCase(repository);
-    this.getUseCase = new GetCatalogsUseCase(repository);
-    this.updateUseCase = new UpdateCatalogUseCase(repository);
-    this.deleteUseCase = new DeleteCatalogUseCase(repository);
-    this.createValueUseCase = new CreateCatalogValueUseCase(repository);
-    this.getValuesUseCase = new GetCatalogValuesUseCase(repository);
-    this.updateValueUseCase = new UpdateCatalogValueUseCase(repository);
-    this.deleteValueUseCase = new DeleteCatalogValueUseCase(repository);
-    this.validateValueUseCase = new ValidateCatalogValueUseCase(repository);
+    this.getCatalogsUseCase = new GetCatalogsUseCase(repository);
+    this.getCatalogByIdUseCase = new GetCatalogByIdUseCase(repository);
+    this.createCatalogUseCase = new CreateCatalogUseCase(repository);
+    this.updateCatalogUseCase = new UpdateCatalogUseCase(repository);
+    this.deleteCatalogUseCase = new DeleteCatalogUseCase(repository);
+    this.getCatalogValuesUseCase = new GetCatalogValuesUseCase(repository);
+    this.addCatalogValueUseCase = new AddCatalogValueUseCase(repository);
+    this.updateCatalogValueUseCase = new UpdateCatalogValueUseCase(repository);
+    this.removeCatalogValueUseCase = new RemoveCatalogValueUseCase(repository);
   }
-
-  create = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const dto: CreateCatalogDto = req.body;
-      const userId = (req as any).user?.userId;
-      const result = await this.createUseCase.execute(dto, userId);
-      res.status(201).json(result);
-    } catch (error) {
-      res.status(400).json({ error: (error as Error).message });
-    }
-  };
 
   findAll = async (req: Request, res: Response): Promise<void> => {
     try {
-      const results = await this.getUseCase.execute();
-      res.json(results);
+      const { isActive, search } = req.query;
+      const result = await this.getCatalogsUseCase.execute({
+        isActive: isActive !== undefined ? isActive === 'true' : undefined,
+        search: search as string | undefined,
+      });
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -60,7 +43,7 @@ export class CatalogController {
   findById = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const result = await this.getUseCase.executeByKey(id);
+      const result = await this.getCatalogByIdUseCase.execute(id);
       if (!result) {
         res.status(404).json({ error: 'Catalog not found' });
         return;
@@ -74,7 +57,7 @@ export class CatalogController {
   findByKey = async (req: Request, res: Response): Promise<void> => {
     try {
       const { key } = req.params;
-      const result = await this.getUseCase.executeByKey(key);
+      const result = await this.getCatalogByIdUseCase.executeByKey(key);
       if (!result) {
         res.status(404).json({ error: 'Catalog not found' });
         return;
@@ -85,11 +68,23 @@ export class CatalogController {
     }
   };
 
+  create = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dto: CreateCatalogDto = req.body;
+      const userId = (req as any).user?.userId;
+      const result = await this.createCatalogUseCase.execute(dto, userId);
+      res.status(201).json(result);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  };
+
   update = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
       const dto: UpdateCatalogDto = req.body;
-      const result = await this.updateUseCase.execute(id, dto);
+      const userId = (req as any).user?.userId;
+      const result = await this.updateCatalogUseCase.execute(id, dto, userId);
       if (!result) {
         res.status(404).json({ error: 'Catalog not found' });
         return;
@@ -103,7 +98,8 @@ export class CatalogController {
   delete = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const success = await this.deleteUseCase.execute(id);
+      const userId = (req as any).user?.userId;
+      const success = await this.deleteCatalogUseCase.execute(id, userId);
       if (!success) {
         res.status(404).json({ error: 'Catalog not found' });
         return;
@@ -114,46 +110,29 @@ export class CatalogController {
     }
   };
 
-  // Values
-  createValue = async (req: Request, res: Response): Promise<void> => {
+  // Catalog Values
+  getValues = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { isActive } = req.query;
+      const result = await this.getCatalogValuesUseCase.execute(id, {
+        isActive: isActive !== undefined ? isActive === 'true' : undefined,
+      });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  };
+
+  addValue = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
       const dto: CreateCatalogValueDto = req.body;
-      const result = await this.createValueUseCase.execute(id, dto);
+      const userId = (req as any).user?.userId;
+      const result = await this.addCatalogValueUseCase.execute(id, dto, userId);
       res.status(201).json(result);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
-    }
-  };
-
-  findValues = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const results = await this.getValuesUseCase.execute(id);
-      res.json(results);
-    } catch (error) {
-      res.status(500).json({ error: (error as Error).message });
-    }
-  };
-
-  findValuesByKey = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { key } = req.params;
-      const results = await this.getValuesUseCase.executeByKey(key);
-      res.json(results);
-    } catch (error) {
-      res.status(500).json({ error: (error as Error).message });
-    }
-  };
-
-  validateValue = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { key } = req.params;
-      const { code } = req.body;
-      const isValid = await this.validateValueUseCase.execute(key, code);
-      res.json({ valid: isValid });
-    } catch (error) {
-      res.status(500).json({ error: (error as Error).message });
     }
   };
 
@@ -161,7 +140,8 @@ export class CatalogController {
     try {
       const { valueId } = req.params;
       const dto: UpdateCatalogValueDto = req.body;
-      const result = await this.updateValueUseCase.execute(valueId, dto);
+      const userId = (req as any).user?.userId;
+      const result = await this.updateCatalogValueUseCase.execute(valueId, dto, userId);
       if (!result) {
         res.status(404).json({ error: 'Catalog value not found' });
         return;
@@ -172,10 +152,11 @@ export class CatalogController {
     }
   };
 
-  deleteValue = async (req: Request, res: Response): Promise<void> => {
+  removeValue = async (req: Request, res: Response): Promise<void> => {
     try {
       const { valueId } = req.params;
-      const success = await this.deleteValueUseCase.execute(valueId);
+      const userId = (req as any).user?.userId;
+      const success = await this.removeCatalogValueUseCase.execute(valueId, userId);
       if (!success) {
         res.status(404).json({ error: 'Catalog value not found' });
         return;
