@@ -18,11 +18,13 @@ Registro centralizado de todos los microservicios del ecosistema con metadatos c
 - ID único y nombre del servicio
 - Versión actual y changelog
 - URLs (desarrollo, staging, producción)
-- Estado del servicio (active, deprecated, maintenance)
+- **Estado del servicio** - Referencia a catálogo configurable (ej: "active", "inactive", "suspended", "maintenance")
 - Responsable/equipo dueño
 - Tecnología stack (Node.js, Python, etc.)
 - Repositorio GitHub
 - Documentación links (Swagger, README)
+
+**Nota sobre el Estado:** El campo estado no es un enum fijo en código, sino una referencia al **System Catalog** `service_status` (ver funcionalidad 8). Los valores posibles (activo, inactivo, suspendido, etc.) se configuran dinámicamente desde el administrador sin necesidad de redeploy.
 
 **Endpoints de registro:**
 - Self-registration: Cada microservicio se registra al iniciar
@@ -107,7 +109,53 @@ Sistema de banderas de características para despliegues controlados.
 }
 ```
 
-### 5. Environment Variables Centralizado
+### 5. System Catalogs (Catálogos Configurables)
+
+**Propósito:** Permitir que ciertos campos del sistema usen valores definidos por configuración en lugar de enums hardcodeados. Esto evita redeploys solo por agregar un nuevo valor posible.
+
+**Ejemplo de uso:**
+- **Estado de servicio:** En lugar de un enum fijo `[active, inactive, maintenance]`, el administrador define los valores desde el panel: `activo`, `inactivo`, `suspendido`, `en_mantenimiento`, `deprecated`, etc.
+- **Estado de cliente:** `nuevo`, `activo`, `inactivo`, `suspendido_por_mora`, `eliminado`
+- **Tipo de notificación:** `email`, `sms`, `push`, `whatsapp`, `telegram`
+- **Prioridad:** `baja`, `media`, `alta`, `critica`, `urgente`
+
+**Estructura de un Catálogo:**
+```json
+{
+  "key": "service_status",
+  "name": "Estado de Servicio",
+  "description": "Estados posibles para microservicios registrados",
+  "values": [
+    { "code": "active", "label": "Activo", "color": "#28a745", "sort_order": 1 },
+    { "code": "inactive", "label": "Inactivo", "color": "#6c757d", "sort_order": 2 },
+    { "code": "suspended", "label": "Suspendido", "color": "#ffc107", "sort_order": 3 },
+    { "code": "maintenance", "label": "En Mantenimiento", "color": "#17a2b8", "sort_order": 4 },
+    { "code": "deprecated", "label": "Deprecado", "color": "#dc3545", "sort_order": 5 }
+  ],
+  "is_active": true,
+  "allow_multiple": false
+}
+```
+
+**Features:**
+- CRUD de catálogos y sus valores
+- Metadatos por valor: código, etiqueta, color, orden, descripción
+- Validación de unicidad de códigos dentro de un catálogo
+- Soft delete de valores (para mantener historial)
+- Import/export de catálogos completos
+- API pública para que otros microservicios consulten catálogos
+
+**Consumo desde otros microservicios:**
+```typescript
+// Obtener valores válidos de un catálogo
+const statuses = await systemClient.getCatalogValues('service_status');
+// Resultado: [{code: 'active', label: 'Activo', ...}, ...]
+
+// Validar si un código existe en el catálogo
+const isValid = await systemClient.validateCatalogValue('service_status', 'suspended');
+```
+
+### 6. Environment Variables Centralizado
 
 Variables de entorno gestionadas desde un solo lugar.
 
@@ -167,13 +215,38 @@ services
 - display_name (varchar) -- ej: "Microservicio de Seguridad"
 - description (text)
 - version (varchar) -- semver ej: "1.2.3"
-- status (enum: active, inactive, deprecated, maintenance)
+- status_catalog_id (UUID FK) -- Referencia a catalogs (ej: catálogo "service_status")
+- status_value (varchar) -- Código del valor del catálogo (ej: "active", "suspended")
 - team_owner (varchar)
 - repository_url (varchar)
 - documentation_url (varchar)
 - technology_stack (json) -- ["nodejs", "typescript", "express"]
 - health_check_url (varchar)
 - created_at, updated_at
+
+-- Catálogos del sistema (valores configurables)
+catalogs
+- id (UUID PK)
+- key (varchar, unique) -- ej: "service_status", "customer_type", "notification_priority"
+- name (varchar) -- ej: "Estado de Servicio"
+- description (text)
+- allow_multiple (boolean) -- si true, permite seleccionar múltiples valores
+- is_active (boolean)
+- created_by (varchar)
+- created_at, updated_at
+
+-- Valores de catálogos
+catalog_values
+- id (UUID PK)
+- catalog_id (UUID FK)
+- code (varchar) -- ej: "active", "inactive", "suspended"
+- label (varchar) -- ej: "Activo", "Inactivo", "Suspendido"
+- description (text)
+- color (varchar) -- hex color para UI, ej: "#28a745"
+- sort_order (int) -- orden de visualización
+- is_default (boolean) -- valor por defecto
+- is_active (boolean)
+- created_at, updated_at, deleted_at (soft delete)
 
 -- URLs por entorno
 service_endpoints
@@ -353,6 +426,29 @@ DELETE /api/v1/feature-flags/:id          # Eliminar flag
 POST   /api/v1/feature-flags/:id/toggle    # Toggle ON/OFF
 POST   /api/v1/feature-flags/:id/services  # Asociar a servicios
 POST   /api/v1/feature-flags/evaluate       # Evaluar si flag está activo para usuario
+```
+
+### System Catalogs (Catálogos Configurables)
+
+```
+# Catálogos
+GET    /api/v1/catalogs                     # Listar todos los catálogos
+GET    /api/v1/catalogs/:key               # Obtener catálogo por key
+POST   /api/v1/catalogs                    # Crear nuevo catálogo
+PUT    /api/v1/catalogs/:id                # Actualizar catálogo
+DELETE /api/v1/catalogs/:id                # Eliminar catálogo
+
+# Valores de catálogo
+GET    /api/v1/catalogs/:id/values          # Listar valores del catálogo
+GET    /api/v1/catalogs/:key/values        # Listar valores por key del catálogo
+POST   /api/v1/catalogs/:id/values         # Agregar valor al catálogo
+PUT    /api/v1/catalogs/values/:valueId    # Actualizar valor
+DELETE /api/v1/catalogs/values/:valueId    # Eliminar valor (soft delete)
+
+# API pública para otros microservicios
+GET    /api/v1/public/catalogs/:key/values          # Obtener valores (sin auth)
+POST   /api/v1/public/catalogs/:key/validate         # Validar si código existe
+GET    /api/v1/public/catalogs/:key/default         # Obtener valor por defecto
 ```
 
 ### Service Discovery (para otros microservicios)
@@ -570,10 +666,11 @@ src/
 
 ## Roadmap
 
-### Fase 1: Core Registry (2 semanas)
+### Fase 1: Core Registry + System Catalogs (3 semanas)
 - CRUD de servicios
 - Heartbeat system
 - Health dashboard
+- **System Catalogs (catálogos configurables)**
 - Service discovery API
 
 ### Fase 2: Configuration (2 semanas)

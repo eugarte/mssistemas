@@ -10,7 +10,21 @@ Microservicio de Catálogo y Configuración Centralizada
 - ⚙️ Configuraciones centralizadas por entorno
 - 🔐 Gestión segura de secrets
 - 🚩 Feature flags y control de releases
+- 📚 **System Catalogs (catálogos de valores configurables)**
 - 💓 Health monitoring de todos los servicios
+
+### System Catalogs - El Diferenciador
+
+A diferencia de enums hardcodeados, **mssistemas** permite definir **catálogos dinámicos**:
+
+| Catálogo | Ejemplo de Valores | Usado por |
+|----------|-------------------|-----------|
+| `service_status` | activo, inactivo, suspendido, mantenimiento | Service Registry |
+| `customer_type` | nuevo, regular, vip, moroso, eliminado | msclientes |
+| `notification_priority` | baja, media, alta, critica, urgente | msnotificaciones |
+| `payment_status` | pendiente, completado, fallido, reembolsado | (futuro msbilling) |
+
+**Beneficio:** Agregar un nuevo estado no requiere redeploy del código. El administrador lo crea desde el panel y todos los servicios lo ven inmediatamente.
 
 ## Funcionalidades
 
@@ -20,6 +34,7 @@ Microservicio de Catálogo y Configuración Centralizada
 | **Configuration Mgmt** | Configuraciones por servicio y entorno (dev, test, staging, prod) |
 | **Secrets Vault** | Almacenamiento encriptado de credenciales y API keys |
 | **Feature Flags** | Toggle de features, rollout gradual, A/B testing |
+| **System Catalogs** | **Catálogos de valores configurables** (estados, tipos, prioridades) |
 | **Health Dashboard** | Monitoreo de estado de todos los servicios en tiempo real |
 
 ## Arquitectura
@@ -75,11 +90,13 @@ Microservicio de Catálogo y Configuración Centralizada
 
 | Fase | Duración | Qué incluye |
 |------|----------|-------------|
-| 1 | 2 semanas | Service Registry + Health monitoring |
+| 1 | 3 semanas | Service Registry + **System Catalogs** + Health monitoring |
 | 2 | 2 semanas | Configuration Management + Client SDK |
 | 3 | 2 semanas | Secrets Vault con encriptación |
 | 4 | 1 semana | Feature Flags engine |
 | 5 | 1 semana | Testing + Swagger + Dashboard UI |
+
+**Total: 9 semanas**
 
 ## Integración con otros servicios
 
